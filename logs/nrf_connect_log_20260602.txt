@@ -1,0 +1,66 @@
+nRF Connect, 2026-06-02
+M02C_EB50 (3C:A6:DE:5B:EB:50)
+V	23:27:00.256	Connecting to 3C:A6:DE:5B:EB:50...
+D	23:27:00.256	gatt = device.connectGatt(autoConnect = false, TRANSPORT_LE, preferred PHY = LE 1M)
+D	23:27:00.267	[Callback] Connection state changed with status: 0 and new state: CONNECTED (2)
+I	23:27:00.267	Connected to 3C:A6:DE:5B:EB:50
+D	23:27:00.267	wait(1600ms)
+V	23:27:01.869	Discovering services...
+D	23:27:01.869	gatt.discoverServices()
+D	23:27:01.886	[Callback] Services discovered with status: 0
+I	23:27:01.886	Services discovered
+V	23:27:01.895	Generic Access (0x1800)
+- Device Name [R W] (0x2A00)
+Unknown Service (0000ae30-0000-1000-8000-00805f9b34fb)
+- Unknown Characteristic [WNR] (0000ae01-0000-1000-8000-00805f9b34fb)
+- Unknown Characteristic [N] (0000ae02-0000-1000-8000-00805f9b34fb)
+   Client Characteristic Configuration (0x2902)
+- Unknown Characteristic [WNR] (0000ae03-0000-1000-8000-00805f9b34fb)
+- Unknown Characteristic [N] (0000ae04-0000-1000-8000-00805f9b34fb)
+   Client Characteristic Configuration (0x2902)
+- Unknown Characteristic [I] (0000ae05-0000-1000-8000-00805f9b34fb)
+   Client Characteristic Configuration (0x2902)
+- Unknown Characteristic [R W] (0000ae10-0000-1000-8000-00805f9b34fb)
+Unknown Service (00003802-0000-1000-8000-00805f9b34fb)
+- Unknown Characteristic [N R W] (00004a02-0000-1000-8000-00805f9b34fb)
+   Client Characteristic Configuration (0x2902)
+Unknown Service (0000ae3a-0000-1000-8000-00805f9b34fb)
+- Unknown Characteristic [WNR] (0000ae3b-0000-1000-8000-00805f9b34fb)
+- Unknown Characteristic [N] (0000ae3c-0000-1000-8000-00805f9b34fb)
+   Client Characteristic Configuration (0x2902)
+Generic Attribute (0x1801)
+- Service Changed [I] (0x2A05)
+   Client Characteristic Configuration (0x2902)
+Unknown Service (6e40fff0-b5a3-f393-e0a9-e50e24dcca9e)
+- RX Characteristic [W WNR] (6e400002-b5a3-f393-e0a9-e50e24dcca9e)
+- TX Characteristic [N] (6e400003-b5a3-f393-e0a9-e50e24dcca9e)
+   Client Characteristic Configuration (0x2902)
+Unknown Service (de5bf728-d711-4e47-af26-65e3012a5dc7)
+- Unknown Characteristic [W WNR] (de5bf72a-d711-4e47-af26-65e3012a5dc7)
+- Unknown Characteristic [N] (de5bf729-d711-4e47-af26-65e3012a5dc7)
+   Client Characteristic Configuration (0x2902)
+Device Information (0x180A)
+- Serial Number String [R] (0x2A25)
+- Hardware Revision String [R] (0x2A27)
+- Firmware Revision String [R] (0x2A26)
+- System ID [R] (0x2A23)
+Unknown Service (0000fee1-0000-1000-8000-00805f9b34fb)
+- Unknown Characteristic [N R W] (0000fee3-0000-1000-8000-00805f9b34fb)
+   Client Characteristic Configuration (0x2902)
+D	23:27:01.895	gatt.setCharacteristicNotification(0000ae02-0000-1000-8000-00805f9b34fb, true)
+D	23:27:01.896	gatt.setCharacteristicNotification(0000ae04-0000-1000-8000-00805f9b34fb, true)
+D	23:27:01.897	gatt.setCharacteristicNotification(0000ae05-0000-1000-8000-00805f9b34fb, true)
+D	23:27:01.899	gatt.setCharacteristicNotification(00004a02-0000-1000-8000-00805f9b34fb, true)
+D	23:27:01.900	gatt.setCharacteristicNotification(0000ae3c-0000-1000-8000-00805f9b34fb, true)
+D	23:27:01.902	gatt.setCharacteristicNotification(00002a05-0000-1000-8000-00805f9b34fb, true)
+D	23:27:01.903	gatt.setCharacteristicNotification(6e400003-b5a3-f393-e0a9-e50e24dcca9e, true)
+D	23:27:01.905	gatt.setCharacteristicNotification(de5bf729-d711-4e47-af26-65e3012a5dc7, true)
+D	23:27:01.907	gatt.setCharacteristicNotification(0000fee3-0000-1000-8000-00805f9b34fb, true)
+I	23:27:06.155	Notification received from de5bf729-d711-4e47-af26-65e3012a5dc7, value: (0x) BC-73-03-00-6A-A1-05-1A-00
+A	23:27:06.155	"(0x) BC-73-03-00-6A-A1-05-1A-00" received
+I	23:27:16.184	Notification received from de5bf729-d711-4e47-af26-65e3012a5dc7, value: (0x) BC-73-03-00-6A-51-05-19-00
+A	23:27:16.184	"(0x) BC-73-03-00-6A-51-05-19-00" received
+I	23:27:26.165	Notification received from de5bf729-d711-4e47-af26-65e3012a5dc7, value: (0x) BC-73-03-00-6B-C1-05-18-00
+A	23:27:26.165	"(0x) BC-73-03-00-6B-C1-05-18-00" received
+I	23:27:36.157	Notification received from de5bf729-d711-4e47-af26-65e3012a5dc7, value: (0x) BC-73-03-00-6E-31-05-17-00
+A	23:27:36.157	"(0x) BC-73-03-00-6E-31-05-17-00" received
