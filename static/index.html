@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HeyCyan Admin</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- ── 헤더 ──────────────────────────────────────── -->
+<header>
+  <h1>🕶 HeyCyan Admin</h1>
+  <div class="header-right">
+    <div id="ws-status">
+      <div id="ws-dot" class="dot"></div>
+      <span id="ws-label">연결 안됨</span>
+    </div>
+    <button class="btn-ghost btn-sm" onclick="loadMediaList()">⟳ 새로고침</button>
+  </div>
+</header>
+
+<!-- ── 레이아웃 ───────────────────────────────────── -->
+<div class="layout">
+
+  <!-- ══ 좌측: 기기 패널 ════════════════════════════ -->
+  <div class="panel">
+    <div class="panel-title">기기 제어</div>
+
+    <!-- BLE 상태 -->
+    <div class="card">
+      <div class="card-title">📶 BLE 연결</div>
+      <div style="margin-bottom:10px">
+        <span id="ble-state" class="badge badge-red">○ 연결 안됨</span>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">
+        주소: <span id="device-address">-</span>
+      </div>
+      <div class="btn-group">
+        <div class="btn-row">
+          <button id="btn-scan" class="btn-primary" onclick="scanDevices()">스캔</button>
+          <button class="btn-ghost" onclick="disconnectBLE()">연결 해제</button>
+        </div>
+      </div>
+      <!-- 직접 주소 입력 -->
+      <div style="margin-top:10px;display:flex;gap:6px">
+        <input id="manual-address" placeholder="직접 주소 입력 (AA:BB:CC:...)" style="flex:1;font-size:11px">
+        <button class="btn-primary btn-sm" onclick="connectDevice(document.getElementById('manual-address').value)">연결</button>
+      </div>
+      <!-- 스캔 결과 -->
+      <div id="device-list" style="margin-top:10px"></div>
+    </div>
+
+    <!-- 기기 정보 -->
+    <div class="card">
+      <div class="card-title">📋 기기 정보</div>
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-value" id="battery-value">-</div>
+          <div class="info-label">배터리</div>
+        </div>
+        <div class="info-item">
+          <div class="info-value" id="photo-count">-</div>
+          <div class="info-label">사진</div>
+        </div>
+        <div class="info-item">
+          <div class="info-value" id="video-count">-</div>
+          <div class="info-label">영상</div>
+        </div>
+        <div class="info-item">
+          <div class="info-value" id="audio-count">-</div>
+          <div class="info-label">오디오</div>
+        </div>
+      </div>
+      <div class="battery-bar">
+        <div id="battery-fill" class="battery-fill" style="width:0%"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px">
+        펌웨어: <span id="firmware">-</span>
+      </div>
+    </div>
+
+    <!-- 제어 버튼 -->
+    <div class="card">
+      <div class="card-title">🎮 제어</div>
+      <div class="btn-group">
+        <button class="btn-primary needs-ble" onclick="takePhoto()" disabled>📷 사진 촬영</button>
+        <button id="btn-video" class="btn-primary needs-ble" onclick="toggleVideo()" disabled>🎥 영상 녹화</button>
+        <button id="btn-audio" class="btn-primary needs-ble" onclick="toggleAudio()" disabled>🎙 오디오 녹음</button>
+        <button class="btn-ghost needs-ble" onclick="triggerAiPhoto()" disabled>🤖 AI 이미지</button>
+        <div class="btn-row" style="margin-top:4px">
+          <button class="btn-ghost btn-sm needs-ble" onclick="checkUUIDs()" disabled>UUID 확인</button>
+          <button class="btn-ghost btn-sm needs-ble"
+            onclick="api('POST','/api/device/battery').then(r=>log('배터리: '+r.battery+'%','ok'))" disabled>
+            배터리 갱신
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wi-Fi 싱크 -->
+    <div class="card">
+      <div class="card-title">📡 Wi-Fi 싱크</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px">
+        IP: <span id="wifi-ip">-</span>
+      </div>
+      <div class="btn-group">
+        <button class="btn-ghost btn-sm needs-ble" onclick="enableWifi()" disabled>핫스팟 활성화</button>
+        <button class="btn-ghost btn-sm" onclick="probeEndpoints()">엔드포인트 탐색</button>
+        <button id="btn-sync" class="btn-success" onclick="syncFiles()">⬇ 파일 싱크</button>
+      </div>
+      <div style="margin-top:10px">
+        <div style="font-size:11px;color:var(--text2)" id="sync-label"></div>
+        <div class="progress-bar">
+          <div id="sync-bar" class="progress-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 일괄 변환 -->
+    <div class="card">
+      <div class="card-title">🔄 일괄 처리</div>
+      <div class="btn-group">
+        <button class="btn-ghost btn-sm"
+          onclick="api('POST','/api/audio/batch_convert').then(r=>log('변환 완료: '+r.converted+'개','ok'))">
+          OPUS → WAV 일괄 변환
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 중앙: 파일 브라우저 ════════════════════════ -->
+  <div class="panel" style="border-right:1px solid var(--border)">
+    <div class="panel-title">파일 브라우저</div>
+
+    <!-- 오디오 플레이어 -->
+    <div class="audio-player">
+      <div class="now-playing" id="now-playing">재생 중인 파일 없음</div>
+      <audio id="audio-player" controls></audio>
+    </div>
+
+    <!-- 탭 -->
+    <div class="tabs">
+      <button class="tab active" data-tab="photos" onclick="switchTab('photos')">📷 사진</button>
+      <button class="tab" data-tab="videos" onclick="switchTab('videos')">🎥 영상</button>
+      <button class="tab" data-tab="audio" onclick="switchTab('audio')">🎵 오디오</button>
+    </div>
+
+    <!-- 파일 목록/그리드 -->
+    <div id="file-container" class="photo-grid">
+      <div class="empty-state">
+        <div class="icon">📂</div>
+        파일 없음<br>
+        <small>싱크 후 파일이 표시됩니다</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 우측: 활동 패널 ════════════════════════════ -->
+  <div class="panel">
+    <div class="panel-title">활동 / STT</div>
+
+    <!-- STT 결과 -->
+    <div class="card">
+      <div class="card-title">📝 STT 결과</div>
+      <div id="stt-file" class="stt-file">파일 선택 안됨</div>
+      <div id="stt-text" class="stt-box">오디오 파일에서 STT 버튼을 클릭하면 결과가 여기에 표시됩니다.</div>
+      <div style="margin-top:8px">
+        <select id="stt-lang" style="width:100%;margin-bottom:6px">
+          <option value="ko">한국어</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="zh">中文</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 로그 -->
+    <div class="card" style="flex:1">
+      <div class="card-title" style="display:flex;justify-content:space-between">
+        📋 로그
+        <button class="btn-ghost btn-sm"
+          onclick="document.getElementById('log-box').innerHTML=''">지우기</button>
+      </div>
+      <div id="log-box" class="log-box"></div>
+    </div>
+
+    <!-- 빠른 도움말 -->
+    <div class="card">
+      <div class="card-title">💡 시작 순서</div>
+      <ol style="font-size:11px;color:var(--text2);line-height:2;padding-left:16px">
+        <li>BLE 스캔 → 안경 연결</li>
+        <li>UUID 확인 (첫 연결 시 필수)</li>
+        <li>핫스팟 활성화 → PC Wi-Fi 연결</li>
+        <li>파일 싱크</li>
+        <li>오디오 STT 버튼으로 변환</li>
+      </ol>
+      <div style="margin-top:8px;font-size:11px;color:var(--red)">
+        ⚠ 배터리 15% 미만 시 전송 불가
+      </div>
+    </div>
+  </div>
+
+</div><!-- /layout -->
+
+<!-- ── 사진 모달 ──────────────────────────────────── -->
+<div id="photo-modal" class="modal-overlay" onclick="closeModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span id="modal-name" style="font-weight:600;font-size:13px"></span>
+      <button class="btn-ghost btn-sm" onclick="closeModal()">✕</button>
+    </div>
+    <img id="modal-img" src="" alt="사진">
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

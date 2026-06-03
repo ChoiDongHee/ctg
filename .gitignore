@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+venv_glasses/
+
+# 다운로드 파일 (용량 큰 미디어)
+downloads/
+
+# 서버 로그
+server_*.log
+*.log
+
+# 알려진 기기 주소 (개인정보)
+known_device.txt
+
+# Wi-Fi 프로필
+glasses_wifi.xml
+
+# 환경설정
+.env
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
