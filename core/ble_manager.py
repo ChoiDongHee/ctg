@@ -6,22 +6,21 @@ from typing import Callable, Optional
 
 from bleak import BleakScanner, BleakClient
 
-# ── 확인된 UUID (nRF Connect + AAR 디컴파일) ─────────────
-# Serial Port Service (실제 데이터 채널)
+# ── v4 프로토콜 확정 UUID (HeyCyan_MO2E_CLI_개발_분석_v4-1.md) ──
+# Nordic UART — 실제 명령 채널
+WRITE_CHAR   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # Nordic UART RX (Write)
+NOTIFY_CHAR  = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # Nordic UART TX (Notify)
+
+# Serial Port (bc73 heartbeat/상태용)
 SERIAL_SVC   = "de5bf728-d711-4e47-af26-65e3012a5dc7"
-WRITE_CHAR   = "de5bf72a-d711-4e47-af26-65e3012a5dc7"  # SERIAL_PORT_CHARACTER_WRITE
-NOTIFY_CHAR  = "de5bf729-d711-4e47-af26-65e3012a5dc7"  # SERIAL_PORT_CHARACTER_NOTIFY
+SERIAL_WRITE = "de5bf72a-d711-4e47-af26-65e3012a5dc7"
+SERIAL_NOTIFY= "de5bf729-d711-4e47-af26-65e3012a5dc7"
 
-# Nordic UART (Constants.class: UUID_SERVICE/UUID_WRITE/UUID_READ)
-UART_SVC     = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e"
-UART_WRITE   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # UUID_WRITE (RX)
-UART_READ    = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # UUID_READ  (TX)
-
-# ae30 서비스 (에코 채널 — aa55 명령 → ae02 에코)
+# ae30 서비스 (에코 채널)
 AE01_WRITE   = "0000ae01-0000-1000-8000-00805f9b34fb"
 AE02_NOTIFY  = "0000ae02-0000-1000-8000-00805f9b34fb"
 
-# nRF Connect와 동일하게 구독할 9개 채널
+# nRF Connect와 동일하게 구독할 9개 채널 (type=03 배터리 수신용)
 ALL_NOTIFY_UUIDS = [
     AE02_NOTIFY,
     "0000ae04-0000-1000-8000-00805f9b34fb",
@@ -29,8 +28,8 @@ ALL_NOTIFY_UUIDS = [
     "00004a02-0000-1000-8000-00805f9b34fb",
     "0000ae3c-0000-1000-8000-00805f9b34fb",
     "00002a05-0000-1000-8000-00805f9b34fb",
-    UART_READ,
-    NOTIFY_CHAR,
+    NOTIFY_CHAR,    # Nordic UART TX
+    SERIAL_NOTIFY,  # Serial Port (bc73)
     "0000fee3-0000-1000-8000-00805f9b34fb",
 ]
 
@@ -187,63 +186,58 @@ class BLEManager:
         self.state = BLEState.DISCONNECTED
         self.device_address = None
 
-    # ── 명령 전송 헬퍼 ────────────────────────────────────
-    async def _write(self, uuid: str, data: bytes):
+    # ── v4 패킷 빌더 (BC 41 CRC16 프로토콜) ─────────────
+    @staticmethod
+    def _crc16(data: bytes) -> int:
+        """CRC16 Modbus (Init=0xFFFF, Poly=0xA001, LE output)"""
+        crc = 0xFFFF
+        for b in data:
+            crc ^= b
+            for _ in range(8):
+                if crc & 1:
+                    crc = (crc >> 1) ^ 0xA001
+                else:
+                    crc >>= 1
+                crc &= 0xFFFF
+        return crc
+
+    def _build_v4(self, payload: bytes, cmd: int = 0x41) -> bytes:
+        """BC [CMD] [LEN_LO] [LEN_HI] [PAYLOAD] [CRC16_LO] [CRC16_HI]"""
+        length = len(payload).to_bytes(2, "little")
+        crc = self._crc16(payload).to_bytes(2, "little")
+        return bytes([0xBC, cmd]) + length + payload + crc
+
+    # ── 기기 제어 명령 (v4 프로토콜) ─────────────────────
+    async def _cmd(self, *payload_bytes: int) -> str:
+        """Nordic UART RX (6e400002) 에 v4 패킷 전송 (response=False)"""
         if not self.is_connected:
             raise RuntimeError("BLE 연결 안 됨")
-        await self.client.write_gatt_char(uuid, data)
-
-    def _aa55(self, cmd: int, *payload: int) -> bytes:
-        body = bytes([cmd, len(payload)]) + bytes(payload)
-        return bytes([0xAA, 0x55]) + body + bytes([sum(body) & 0xFF])
-
-    # ── 기기 제어 명령 ────────────────────────────────────
-    # Android SDK 확인: LargeDataHandler.glassesControl(byteArrayOf(...))
-    # 세 채널 동시 시도로 동작 확률 극대화
-
-    async def _cmd(self, *raw_bytes: int):
-        """de5b + ae01 + UART 세 채널 동시 전송"""
-        raw = bytes(raw_bytes)
-        aa = self._aa55(raw_bytes[0], *raw_bytes[1:]) if len(raw_bytes) >= 1 else raw
-
-        results = []
-        for uuid, data in [
-            (WRITE_CHAR,  raw),   # Serial Port (SDK 확인)
-            (AE01_WRITE,  aa),    # ae30 서비스 (에코 확인)
-            (UART_WRITE,  raw),   # Nordic UART
-        ]:
-            try:
-                await self._write(uuid, data)
-                results.append(uuid[:8])
-            except Exception:
-                pass
-        return results
+        payload = bytes(payload_bytes)
+        pkt = self._build_v4(payload)
+        try:
+            await self.client.write_gatt_char(WRITE_CHAR, pkt, response=False)
+        except Exception:
+            await self.client.write_gatt_char(WRITE_CHAR, pkt, response=True)
+        return pkt.hex(" ").upper()
 
     async def take_photo(self):
-        """사진 촬영: [0x02, 0x01, 0x01]"""
+        """사진 촬영: BC 41 03 00 02 01 01 CRC16"""
         return await self._cmd(0x02, 0x01, 0x01)
 
     async def start_video(self):
-        """영상 녹화 시작: [0x02, 0x01, 0x02]"""
+        """영상 녹화 시작: BC 41 03 00 02 01 02 CRC16"""
         return await self._cmd(0x02, 0x01, 0x02)
 
     async def stop_video(self):
-        """영상 녹화 중지: [0x02, 0x01, 0x03]"""
+        """영상 녹화 중지: BC 41 03 00 02 01 03 CRC16"""
         return await self._cmd(0x02, 0x01, 0x03)
 
     async def enable_wifi_transfer(self) -> Optional[str]:
-        """Wi-Fi 전송 모드: [0x02, 0x01, 0x04] + aa55 0x40"""
+        """Wi-Fi AP 모드: BC 41 04 00 02 01 04 02 CRC16"""
         self.extracted_ip = None
         self._wifi_ssid = None
+        await self._cmd(0x02, 0x01, 0x04, 0x02)  # AP 앨범 가져오기 (Wi-Fi AP 모드)
 
-        # 두 형식 모두 전송
-        await self._cmd(0x02, 0x01, 0x04)
-        try:
-            await self._write(AE01_WRITE, self._aa55(0x40))
-        except Exception:
-            pass
-
-        # IP/SSID 수신 대기 (최대 15초)
         for _ in range(150):
             await asyncio.sleep(0.1)
             if self.extracted_ip or self._wifi_ssid:
@@ -251,19 +245,25 @@ class BLEManager:
         return None
 
     async def get_media_count(self):
-        """미디어 파일 개수: [0x02, 0x04]"""
-        await self._cmd(0x02, 0x04)
+        """앨범 개수 조회: BC 41 02 00 02 04 CRC16"""
+        return await self._cmd(0x02, 0x04)
 
     async def get_battery(self):
-        """배터리 조회 — ae01 aa55 + Serial Port 동시"""
+        """배터리 조회 (bc73 type=03으로 자동 수신됨, 강제 폴링 불필요)"""
         try:
-            await self._write(AE01_WRITE, self._aa55(0x20))
+            await self._cmd(0x02, 0x04)  # 앨범 조회로 keepalive
         except Exception:
             pass
         try:
-            await self._write(WRITE_CHAR, bytes([0x02, 0x04]))
+            await self.client.write_gatt_char(
+                AE01_WRITE,
+                bytes([0xAA, 0x55, 0x20, 0x00, 0x20]),
+                response=False
+            )
         except Exception:
             pass
+        # de5b는 이제 keepalive만 사용
+
 
     async def start_audio(self):
         """오디오 녹음 시작: [0x02, 0x01, 0x08]"""
