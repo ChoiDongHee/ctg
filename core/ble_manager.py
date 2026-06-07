@@ -64,12 +64,21 @@ class BLEManager:
     def is_connected(self) -> bool:
         return self.client is not None and self.client.is_connected
 
-    # ── bc73 응답 파싱 ────────────────────────────────────
+    # ── v5 응답 파싱 ─────────────────────────────────────
     def _parse_bc73(self, data: bytes):
-        if len(data) < 4 or data[0] != 0xBC or data[1] != 0x73:
+        """
+        v5 응답 포맷: BC [CMD] [LEN_LO LEN_HI] [CRC_LO CRC_HI] [PAYLOAD]
+        CMD=0x73: 자동 상태 브로드캐스트 (배터리, 센서)
+        CMD=0x41: 명령 응답 (앨범개수, 모드변경 등)
+        """
+        if len(data) < 7 or data[0] != 0xBC:
             return
 
-        # IP 추출 (Wi-Fi 활성화 응답)
+        cmd = data[1]
+        length = int.from_bytes(data[2:4], "little")
+        payload = data[6:6+length] if len(data) >= 6+length else data[6:]
+
+        # IP 추출
         try:
             text = data.decode("utf-8", errors="ignore")
             m = _IP_REGEX.search(text)
@@ -78,18 +87,20 @@ class BLEManager:
         except Exception:
             pass
 
-        resp_type = data[2]
+        # 배터리 파싱: payload[0]=0x05 → [1]=배터리%, [2]=충전상태
+        if payload and len(payload) >= 3 and payload[0] == 0x05:
+            level = payload[1]
+            if 0 <= level <= 100:
+                self.battery_level = level
+                self.battery_charging = bool(payload[2])
 
-        # type=03: 상태 업데이트 (배터리, 미디어수 등)
-        # Android: loadData[6]=0x05 → battery=loadData[7], charging=loadData[8]
-        if resp_type == 0x03 and len(data) >= 8:
-            for i in range(4, len(data) - 2):
-                if data[i] == 0x05 and i + 2 < len(data):
-                    level = data[i + 1]
-                    if 0 <= level <= 100:
-                        self.battery_level = level
-                        self.battery_charging = bool(data[i + 2])
-                    break
+        # 앨범 개수 응답 (CMD=0x41, payload starts with 02 04)
+        if cmd == 0x41 and len(payload) >= 3 and payload[0] == 0x02 and payload[1] == 0x04:
+            self.media_count = {
+                "photo": payload[2],
+                "video": payload[3] if len(payload) > 3 else 0,
+                "audio": payload[4] if len(payload) > 4 else 0,
+            }
 
         # SSID/PW 파싱 시도
         if len(data) > 6:
@@ -201,23 +212,31 @@ class BLEManager:
                 crc &= 0xFFFF
         return crc
 
-    def _build_v4(self, payload: bytes, cmd: int = 0x41) -> bytes:
-        """BC [CMD] [LEN_LO] [LEN_HI] [PAYLOAD] [CRC16_LO] [CRC16_HI]"""
+    def _build_v5(self, payload: bytes, cmd: int = 0x41) -> bytes:
+        """
+        v5 확정 포맷: BC [CMD] [LEN_LO] [LEN_HI] [CRC_LO] [CRC_HI] [PAYLOAD]
+        CRC가 PAYLOAD 앞에 옴 (v4와 순서 다름)
+        WRITE: de5bf72a / response=False
+        """
         length = len(payload).to_bytes(2, "little")
         crc = self._crc16(payload).to_bytes(2, "little")
-        return bytes([0xBC, cmd]) + length + payload + crc
+        return bytes([0xBC, cmd]) + length + crc + payload
+
+    # v4 호환 (deprecated)
+    def _build_v4(self, payload: bytes, cmd: int = 0x41) -> bytes:
+        return self._build_v5(payload, cmd)
 
     # ── 기기 제어 명령 (v4 프로토콜) ─────────────────────
     async def _cmd(self, *payload_bytes: int) -> str:
-        """Nordic UART RX (6e400002) 에 v4 패킷 전송 (response=False)"""
+        """
+        v5 확정: de5bf72a Write에 BC [CMD] [LEN] [CRC] [PAYLOAD] 전송
+        response=False (write without response)
+        """
         if not self.is_connected:
             raise RuntimeError("BLE 연결 안 됨")
         payload = bytes(payload_bytes)
-        pkt = self._build_v4(payload)
-        try:
-            await self.client.write_gatt_char(WRITE_CHAR, pkt, response=False)
-        except Exception:
-            await self.client.write_gatt_char(WRITE_CHAR, pkt, response=True)
+        pkt = self._build_v5(payload)
+        await self.client.write_gatt_char(WRITE_CHAR, pkt, response=False)
         return pkt.hex(" ").upper()
 
     async def take_photo(self):
