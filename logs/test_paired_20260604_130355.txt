@@ -1,0 +1,42 @@
+============================================================
+BONDED 연결 후 명령 테스트
+============================================================
+스캔 중 (10초)...
+스캔 실패 → 직접 주소 사용: 3C:A6:DE:5B:EB:50
+
+O M02C_EB50 (3C:A6:DE:5B:EB:50)
+
+[1] 연결 중...
+O 연결 성공! MTU=23
+
+[2] 페어링(BOND) 시도...
+O 페어링 이미 페어링됨
+
+[3] Notify 구독 (nRF Connect 방식)...
+  - ae02: BleakError
+  - ae04: BleakError
+  - ae05: BleakError
+  - 4a02: BleakError
+  - ae3c: BleakError
+  - UART_TX: BleakError
+  - de5b: BleakError
+  - fee3: BleakError
+
+[4] type=03 응답 대기 (15초)...
+  5초... type=03: 0개
+  10초... type=03: 0개
+  15초... type=03: 0개
+
+[5] 사진 촬영 명령들 시도...
+  X [ae01 aa55[01]] Not connected
+  X [ae01 aa55[02]] Not connected
+  X [de5b [020101]] Not connected
+  X [UART [020101]] Not connected
+
+[6] Wi-Fi 활성화 시도...
+  5초...
+  10초...
+  15초...
+
+새 SSID: set()
+IP: None

@@ -1,0 +1,57 @@
+============================================================
+  HeyCyan M02C 전체 기능 체크리스트
+============================================================
+
+[1] BLE 연결
+  연속 스캔 중 (최대 60초) — 안경이 다른 기기와 연결 해제되면 자동 감지...
+  30초 내 미발견 → 알려진 주소로 직접 시도: 3C:A6:DE:5B:EB:50
+  시도 1: 
+  [OK] M02C_EB50 | HW:A02S_V2.4 | FW:A02S_2.40.01_260121
+  Notify 구독: 0/8개
+
+[2] 배터리 수신 대기 (15초)...
+  5초... 수신: 0패킷
+  10초... 수신: 0패킷
+  15초... 수신: 0패킷
+  [NG] 15초 내 미수신 (총 0패킷 수신됨)
+
+[3] 미디어 개수 확인
+  [NG] BC-73-05 미수신
+
+[4] 사진촬영 (02-01-01)
+  [NG] 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+
+[5] 영상시작 (02-01-02)
+  [NG] 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+
+[6] 영상중지 (02-01-03)
+  [NG] 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+
+[7] 오디오시작 (02-01-08)
+  [NG] 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+
+[8] 오디오중지 (02-01-0C)
+  [NG] 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+
+[10] Wi-Fi 활성화
+  10초 대기 (새 Wi-Fi 탐색 중)...
+  [NG] 새 Wi-Fi SSID 미탐지 (물리 버튼으로 수동 활성화 필요)
+
+[11] Wi-Fi 파일 다운로드
+  [NG] IP 탐색 실패 (axuser=iptime, 안경 핫스팟 필요)
+
+============================================================
+  최종 체크리스트 결과
+============================================================
+  [O] BLE연결          : PASS M02C_EB50 | HW:A02S_V2.4 | FW:A02S_2.40.01_260121
+  [X] 배터리            : FAIL 15초 내 미수신 (총 0패킷 수신됨)
+  [X] 미디어개수          : FAIL BC-73-05 미수신
+  [X] 사진촬영           : FAIL 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+  [X] 영상시작           : FAIL 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+  [X] 영상중지           : FAIL 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+  [X] 오디오시작          : FAIL 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+  [X] 오디오중지          : FAIL 전송 실패: Characteristic 6e400002-b5a3-f393-e0a9-e50e24dcca9e was not found!
+  [X] WiFi활성화        : FAIL 새 Wi-Fi SSID 미탐지 (물리 버튼으로 수동 활성화 필요)
+  [X] WiFi다운로드       : FAIL IP 탐색 실패 (axuser=iptime, 안경 핫스팟 필요)
+
+  총 수신 패킷: 0개

@@ -1,0 +1,27 @@
+=======================================================
+  사진 촬영 명령 포맷 테스트
+=======================================================
+
+스캔 중 (10초)...
+Traceback (most recent call last):
+  File "D:\Projects\aiGlass\ctg\test_photo_format.py", line 162, in <module>
+    asyncio.run(main())
+  File "C:\Users\cdh11\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\cdh11\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\cdh11\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "D:\Projects\aiGlass\ctg\test_photo_format.py", line 86, in main
+    async with BleakClient(TARGET, timeout=60.0) as client:
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\cdh11\AppData\Local\Programs\Python\Python312\Lib\site-packages\bleak\__init__.py", line 638, in __aenter__
+    await self.connect()
+  File "C:\Users\cdh11\AppData\Local\Programs\Python\Python312\Lib\site-packages\bleak\__init__.py", line 660, in connect
+    await self._backend.connect(self._pair_before_connect, **kwargs)
+  File "C:\Users\cdh11\AppData\Local\Programs\Python\Python312\Lib\site-packages\bleak\backends\winrt\client.py", line 225, in connect
+    raise BleakDeviceNotFoundError(
+bleak.exc.BleakDeviceNotFoundError: Device with address 3C:A6:DE:5B:EB:50 was not found.

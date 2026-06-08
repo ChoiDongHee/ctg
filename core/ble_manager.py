@@ -60,62 +60,102 @@ class BLEManager:
         self._wifi_ssid: Optional[str] = None
         self._wifi_password: Optional[str] = None
         self._on_notify: Optional[Callable] = None
+        self.last_ack_cmd: Optional[int] = None
+        self.last_photo_bytes: Optional[bytes] = None
+        self._photo_buf: dict = {}
 
     @property
     def is_connected(self) -> bool:
         return self.client is not None and self.client.is_connected
 
-    # ── bc73 응답 파싱 ────────────────────────────────────
+    # ── BC 프레임 전체 파서 (로그 분석으로 확인) ────────────
     def _parse_bc73(self, data: bytes):
-        if len(data) < 4 or data[0] != 0xBC or data[1] != 0x73:
+        if len(data) < 2 or data[0] != 0xBC:
             return
 
-        # IP 추출 (Wi-Fi 활성화 응답)
-        try:
-            text = data.decode("utf-8", errors="ignore")
-            m = _IP_REGEX.search(text)
-            if m:
-                self.extracted_ip = m.group()
-        except Exception:
-            pass
+        frame_type = data[1]
 
-        resp_type = data[2]
+        # BC-73: 상태/배터리/미디어/IP
+        if frame_type == 0x73 and len(data) >= 3:
+            resp_type = data[2]
 
-        # type=03: 상태 업데이트 (배터리, 미디어수 등)
-        # Android: loadData[6]=0x05 → battery=loadData[7], charging=loadData[8]
-        if resp_type == 0x03 and len(data) >= 8:
-            for i in range(4, len(data) - 2):
-                if data[i] == 0x05 and i + 2 < len(data):
-                    level = data[i + 1]
-                    if 0 <= level <= 100:
-                        self.battery_level = level
-                        self.battery_charging = bool(data[i + 2])
-                    break
+            # type=03: 배터리 (10초 주기 자동)
+            if resp_type == 0x03 and len(data) >= 8:
+                for i in range(4, len(data) - 2):
+                    if data[i] == 0x05 and i + 2 < len(data):
+                        level = data[i + 1]
+                        if 0 <= level <= 100:
+                            self.battery_level = level
+                            self.battery_charging = bool(data[i + 2])
+                        break
 
-        # SSID/PW 파싱 시도
-        if len(data) > 6:
+            # type=05: 미디어 개수 또는 IP 보고
+            elif resp_type == 0x05 and len(data) >= 11:
+                # BC-73-05-00-[ck]-[ck]-08-[IP1]-[IP2]-[IP3]-[IP4]
+                if data[6] == 0x08:
+                    ip_bytes = data[7:11]
+                    self.extracted_ip = ".".join(map(str, ip_bytes))
+                # BC-73-05-00-[ck]-[ck]-02-00-[photos]-[videos]-[audio]
+                elif data[6] == 0x02:
+                    self.media_count["photo"] = data[8]
+                    self.media_count["video"] = data[9]
+                    self.media_count["audio"] = data[10]
+
+        # BC-41: 명령 ACK & Wi-Fi 설정
+        elif frame_type == 0x41 and len(data) >= 9:
+            # Wi-Fi 설정 응답 (BC-41-22-00-...-02-01-04-01-[ssid_len]-[pwd_len]-[SSID]-[PWD])
+            if len(data) >= 14 and data[6:9] == b"\x02\x01\x04":
+                try:
+                    import struct
+                    ssid_len = struct.unpack("<H", data[10:12])[0]
+                    pwd_len = struct.unpack("<H", data[12:14])[0]
+                    self._wifi_ssid = data[14:14+ssid_len].decode("ascii", errors="ignore")
+                    self._wifi_password = data[14+ssid_len:14+ssid_len+pwd_len].decode("ascii", errors="ignore")
+                except Exception: pass
+            
+            # 일반 명령 ACK
+            if data[6] == 0x02 and data[7] == 0x01:
+                cmd = data[8]
+                self.last_ack_cmd = cmd
+
+        # BC-43: 기기 정보 (펌웨어, Wi-Fi 버전 등)
+        elif frame_type == 0x43 and len(data) > 8:
             try:
-                for idx in range(4, len(data) - 1):
-                    slen = data[idx]
-                    if 3 <= slen <= 32 and idx + slen < len(data):
-                        candidate = data[idx+1:idx+1+slen].decode("ascii", errors="ignore")
-                        if all(c.isprintable() for c in candidate) and len(candidate) >= 3:
-                            pw_idx = idx + 1 + slen
-                            if pw_idx < len(data):
-                                plen = data[pw_idx]
-                                if 0 <= plen <= 32 and pw_idx + plen <= len(data):
-                                    pw = data[pw_idx+1:pw_idx+1+plen].decode("ascii", errors="ignore")
-                                    self._wifi_ssid = candidate
-                                    self._wifi_password = pw
-                                    break
-                    idx += 1
-            except Exception:
-                pass
+                info_bytes = data[8:]
+                info_str = info_bytes.decode("ascii", errors="ignore")
+                if "A02S" in info_str or "WIFI" in info_str:
+                    self.firmware_version = info_str.strip('\x00').replace('\x00', ' ')
+            except Exception: pass
+
+        # BC-FD-FA-03: 사진 데이터 멀티패킷
+        elif frame_type == 0xFD and len(data) > 11 and data[2] == 0xFA and data[3] == 0x03:
+            # 헤더: BC FD FA 03 [ck1] [ck2] 01 [total] [seq] 00 00 [jpeg_data...]
+            total = data[7]
+            seq = data[8]
+            jpeg_data = data[11:]
+            
+            if not hasattr(self, '_photo_buf'):
+                self._photo_buf = {}
+            
+            self._photo_buf[seq] = jpeg_data
+            
+            # 전체 수신 완료 시 조립
+            if len(self._photo_buf) >= total and total > 0:
+                full = b"".join(self._photo_buf[i] for i in sorted(self._photo_buf.keys()))
+                self.last_photo_bytes = full
+                self._photo_buf = {}
+
 
     def _on_ble_notify(self, sender, data: bytes):
-        self._parse_bc73(data)
-        if self._on_notify:
-            self._on_notify(data)
+        try:
+            self._parse_bc73(data)
+        except Exception:
+            pass
+        try:
+            if self._on_notify:
+                self._on_notify(data)
+        except Exception:
+            pass
 
     # ── 스캔 ──────────────────────────────────────────────
     async def scan(self, timeout: float = 15.0) -> list:
@@ -137,36 +177,35 @@ class BLEManager:
         self.state = BLEState.CONNECTING
         self._on_notify = on_notify
         try:
-            # Windows 안정성: 스캔으로 기기 객체 확보 후 연결
-            device = await BleakScanner.find_device_by_address(address, timeout=10.0)
-            if device is None:
-                raise RuntimeError(f"기기 못 찾음 ({address})")
-
-            self.client = BleakClient(device, disconnected_callback=self._on_disconnect)
-            await self.client.connect(timeout=15.0)
+            # Windows: 스캔으로 BLE 스택 초기화 후 직접 연결
+            # 페어링된 기기는 광고를 안 하므로 스캔에서 못 찾아도 연결 시도
+            try:
+                await BleakScanner.discover(timeout=10.0)
+            except Exception:
+                pass
+            self.client = BleakClient(address, disconnected_callback=self._on_disconnect)
+            await self.client.connect(timeout=60.0)
             await asyncio.sleep(1.0)
 
-            # 페어링 시도 (Bonded 연결 — type=03 수신에 필요할 수 있음)
-            try:
-                await self.client.pair()
-            except Exception:
-                pass  # 이미 페어링됐거나 불필요한 경우 무시
+            # pair()는 Windows에서 연결 끊김 유발 가능 — 생략
+            # (이미 시스템에 페어링됨)  # 이미 페어링됐거나 불필요한 경우 무시
 
             # nRF Connect와 동일하게 9개 채널 모두 구독
+            subscribed = []
             for uuid in ALL_NOTIFY_UUIDS:
                 try:
                     await self.client.start_notify(uuid, self._on_ble_notify)
-                except Exception:
+                    subscribed.append(uuid[-8:])
+                except Exception as e:
                     pass
+            import sys
+            print(f"[BLE] 구독 성공: {subscribed}", file=sys.stderr)
 
             self.device_address = address
             self.state = BLEState.CONNECTED
 
-            # 연결 직후 배터리 + 미디어 개수 조회
-            await asyncio.sleep(0.5)
-            await self.get_battery()
-            await asyncio.sleep(0.5)
-            await self.get_media_count()
+            # bc73 type=03이 10초마다 자동 수신되므로 별도 조회 불필요
+            # (연결 직후 write 명령은 연결 끊김 유발 가능)
             return True
 
         except Exception:
@@ -198,25 +237,51 @@ class BLEManager:
         return bytes([0xAA, 0x55]) + body + bytes([sum(body) & 0xFF])
 
     # ── 기기 제어 명령 ────────────────────────────────────
-    # Android SDK 확인: LargeDataHandler.glassesControl(byteArrayOf(...))
-    # 세 채널 동시 시도로 동작 확률 극대화
+    def _crc16_ibm(self, data: bytes) -> int:
+        """IBM CRC16 (Poly 0x8005, Init 0xFFFF, RefIn/Out True)"""
+        crc = 0xFFFF
+        for b in data:
+            crc ^= b
+            for _ in range(8):
+                if crc & 1:
+                    crc = (crc >> 1) ^ 0xA001
+                else:
+                    crc >>= 1
+        return crc & 0xFFFF
+
+    def _full_frame(self, frame_type: int, payload: bytes) -> bytes:
+        """공식 SDK 풀 프레임: BC [Type] [LenLo] [LenHi] [CRCLo] [CRCHi] [Payload]"""
+        length = len(payload)
+        crc = self._crc16_ibm(payload)
+        header = bytes([0xBC, frame_type, length & 0xFF, (length >> 8) & 0xFF, crc & 0xFF, (crc >> 8) & 0xFF])
+        return header + payload
 
     async def _cmd(self, *raw_bytes: int):
-        """de5b + ae01 + UART 세 채널 동시 전송"""
-        raw = bytes(raw_bytes)
-        aa = self._aa55(raw_bytes[0], *raw_bytes[1:]) if len(raw_bytes) >= 1 else raw
-
+        """명령 전송: 공식 풀 프레임 (Type 0x02) → de5b 우선"""
+        # 로그 분석 결과 명령은 보통 5바이트 (02 01 XX FF FF)
+        payload = list(raw_bytes)
+        if len(payload) == 3:
+            payload += [0xFF, 0xFF]
+        
+        payload_bytes = bytes(payload)
+        full = self._full_frame(0x02, payload_bytes) # 명령은 항상 Type 0x02?
+        
+        # 보조 채널용 aa55
+        aa = self._aa55(payload[0], *payload[1:])
+        
         results = []
-        for uuid, data in [
-            (WRITE_CHAR,  raw),   # Serial Port (SDK 확인)
-            (AE01_WRITE,  aa),    # ae30 서비스 (에코 확인)
-            (UART_WRITE,  raw),   # Nordic UART
-        ]:
-            try:
-                await self._write(uuid, data)
-                results.append(uuid[:8])
-            except Exception:
-                pass
+        try:
+            # de5b 채널에 공식 풀 프레임 전송
+            await self._write(WRITE_CHAR, full)
+            results.append("de5b_full")
+        except Exception: pass
+        
+        try:
+            # 보조 채널 (ae01)
+            await self._write(AE01_WRITE, aa)
+            results.append("ae01")
+        except Exception: pass
+        
         return results
 
     async def take_photo(self):

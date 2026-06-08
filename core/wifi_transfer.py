@@ -7,8 +7,10 @@ import aiofiles
 
 # AlbumDownloader.kt + IP 후보 목록
 CANDIDATE_IPS = [
+    "192.168.49.64",  # PCAPdroid 확인 — M02C WiFi Direct GO IP
+    "192.168.49.1",
     "192.168.43.1",   # Android 핫스팟 기본값
-    "192.168.4.1",    # 안경 핫스팟 기본값 ← 가장 흔함
+    "192.168.4.1",
     "192.168.1.1",
     "192.168.0.1",
     "10.0.0.1",
